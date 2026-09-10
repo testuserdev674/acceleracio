@@ -155,6 +155,7 @@
     <div class="container">
       <div id="login-form">
         <button onclick="signInWithGoogle()">Sign in with Google</button>
+        <div id="login-status" style="font-size:13px; margin-top:6px;"></div>
       </div>
 
       <div id="user-info" style="display: none;">
@@ -240,6 +241,8 @@
     let tokenClient = null;
     let accessToken = null;
     let driveFileId = null;
+    let isSilentAttempt = false;
+    const LAST_USER_KEY = 'calendarLastUserEmail';
 
     window.addEventListener('load', () => {
       tokenClient = google.accounts.oauth2.initTokenClient({
@@ -247,20 +250,49 @@
         scope: DRIVE_SCOPE,
         callback: handleTokenResponse
       });
+      attemptSilentSignIn();
     });
 
+    // Try to sign the returning user back in without any click, using the
+    // email we remembered from last time as a hint. If the browser blocks
+    // the silent flow (e.g. strict third-party cookie settings), this just
+    // fails quietly and the normal "Sign in with Google" button stays put.
+    function attemptSilentSignIn() {
+      const lastUser = localStorage.getItem(LAST_USER_KEY);
+      if (!lastUser) return;
+      isSilentAttempt = true;
+      updateLoginStatus('Signing you back in…');
+      tokenClient.requestAccessToken({ prompt: '', hint: lastUser });
+    }
+
+    function updateLoginStatus(msg) {
+      const el = document.getElementById('login-status');
+      if (el) el.textContent = msg || '';
+    }
+
     function signInWithGoogle() {
+      isSilentAttempt = false;
       tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 
     async function handleTokenResponse(tokenResponse) {
       if (!tokenResponse || tokenResponse.error) {
+        if (isSilentAttempt) {
+          // Silent auto sign-in didn't work this time — no alert, just
+          // fall back to showing the manual "Sign in with Google" button.
+          isSilentAttempt = false;
+          updateLoginStatus('');
+          return;
+        }
         console.error(tokenResponse);
         alert('Google sign-in failed. Please try again.');
         return;
       }
+      isSilentAttempt = false;
+      updateLoginStatus('');
       accessToken = tokenResponse.access_token;
       await fetchUserInfo();
+      localStorage.setItem(LAST_USER_KEY, currentUser);
       document.getElementById('login-form').style.display = 'none';
       document.getElementById('user-info').style.display = 'block';
       document.getElementById('calendar-container').style.display = 'block';
@@ -298,6 +330,7 @@
       currentUser = null;
       eventsData = {};
       fileHandle = null;
+      localStorage.removeItem(LAST_USER_KEY);
       document.getElementById('login-form').style.display = 'block';
       document.getElementById('user-info').style.display = 'none';
       document.getElementById('calendar-container').style.display = 'none';
