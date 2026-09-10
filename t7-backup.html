@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time Management Calendar</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #000;
+      color: #fff;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 20px;
+    }
+    .view-toggle, .navigation {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .calendar {
+      width: 100%;
+      background-color: #333;
+      border-radius: 8px;
+      padding: 10px;
+      overflow: auto;
+    }
+    .week-view, .month-view {
+      width: 100%;
+    }
+    .day-block {
+      margin-bottom: 15px;
+    }
+    .day-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      box-sizing: border-box;
+      resize: none;
+      overflow: hidden;
+      min-height: 50px;
+      background-color: #222;
+      color: #fff;
+      border: 1px solid #555;
+      display: block;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      color: #fff;
+    }
+    td, th {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: center;
+      vertical-align: top;
+    }
+    th {
+      background-color: #555;
+    }
+    .navigation button {
+      margin: 5px;
+    }
+    .date-label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    button {
+      background-color: #007BFF;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    button:hover {
+      background-color: #0056b3;
+      transform: scale(1.05);
+    }
+    button:active {
+      background-color: #004080;
+      transform: scale(1);
+    }
+    button:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(38, 143, 255, 0.5);
+    }
+    .month-view .current-month {
+      background-color: red;
+    }
+    .month-view .other-month {
+      background-color: blue;
+      color: white;
+    }
+    .today {
+      background-color: yellow !important;
+      color: black !important;
+    }
+    #login-form {
+      margin-bottom: 20px;
+    }
+    #login-form input {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 4px;
+      border: 1px solid #555;
+    }
+    #user-info {
+      margin-bottom: 10px;
+    }
+    .zoom-controls {
+      margin-bottom: 10px;
+    }
+    #zoom-container {
+      width: 100%;
+      transform-origin: top left;
+    }
+    /* --- Added: backup controls (styled to match existing buttons) --- */
+    .backup-controls {
+      margin-bottom: 15px;
+      text-align: center;
+      max-width: 600px;
+    }
+    .backup-controls button {
+      padding: 8px 14px;
+      font-size: 14px;
+      margin: 4px;
+    }
+    #backup-status {
+      font-size: 13px;
+      min-height: 18px;
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <div id="zoom-container">
+    <div class="container">
+      <div id="login-form">
+        <button onclick="signInWithGoogle()">Sign in with Google</button>
+      </div>
+
+      <div id="user-info" style="display: none;">
+        Logged in as: <span id="user-email"></span>
+        <button onclick="signOutGoogle()">Sign out</button>
+      </div>
+
+      <p><a href="t7.html">Go back to today mode</a></p>
+
+      <div id="calendar-container" style="display: none;">
+
+        <!-- Added: local file backup controls so events survive browser data being cleared -->
+        <div class="backup-controls">
+          <button onclick="chooseBackupFile()">Set Up Local Backup File</button>
+          <button onclick="reconnectBackupFile()">Reconnect Backup File</button>
+          <button onclick="loadBackupFile()">Load Backup File</button>
+          <button onclick="exportBackup()">Export Backup (Download)</button>
+          <button type="button" onclick="document.getElementById('import-input').click()">Import Backup</button>
+          <input type="file" id="import-input" accept="application/json" style="display:none;" onchange="importBackup(event)">
+          <div id="backup-status"></div>
+        </div>
+
+        <div class="zoom-controls">
+          <button onclick="zoom(1.1)">Zoom In</button>
+          <button onclick="zoom(0.9)">Zoom Out</button>
+        </div>
+
+        <div class="view-toggle">
+          <button onclick="showView('week')">Weekly View</button>
+          <button onclick="showView('month')">Monthly View</button>
+        </div>
+
+        <div class="navigation">
+          <button onclick="changePeriod(-1)">Previous</button>
+          <button onclick="changePeriod(1)">Next</button>
+        </div>
+
+        <div class="calendar week-view" id="week-view" style="display:none;">
+          <h2 id="week-title">Weekly View</h2>
+          <div id="week-container"></div>
+        </div>
+
+        <div class="calendar month-view" id="month-view">
+          <h2 id="month-title">Monthly View</h2>
+          <table>
+            <tr>
+              <th>Sun</th>
+              <th>Mon</th>
+              <th>Tue</th>
+              <th>Wed</th>
+              <th>Thu</th>
+              <th>Fri</th>
+              <th>Sat</th>
+            </tr>
+            <tbody id="month-days"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let eventsData = {};
+    let currentDate = new Date();
+    let currentZoom = 1;
+    let saveDebounceTimer = null;
+
+    /* =========================================================
+       Real Google Sign-In (Google Identity Services) + Google
+       Drive appDataFolder sync. Each user's calendar is stored
+       as a hidden JSON file inside THEIR OWN Drive account —
+       nothing is stored on any server you run. Data persists
+       across devices for that Google account, and survives the
+       browser's cache/localStorage being cleared, since it lives
+       in Drive, not in the browser.
+       ========================================================= */
+
+    const GOOGLE_CLIENT_ID = '313116457921-mkmfao7efcll3627qhsas8h534n04ejd.apps.googleusercontent.com';
+    const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
+    const DRIVE_FILE_NAME = 'calendar_data.json';
+
+    let tokenClient = null;
+    let accessToken = null;
+    let driveFileId = null;
+
+    window.addEventListener('load', () => {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        callback: handleTokenResponse
+      });
+    });
+
+    function signInWithGoogle() {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    }
+
+    async function handleTokenResponse(tokenResponse) {
+      if (!tokenResponse || tokenResponse.error) {
+        console.error(tokenResponse);
+        alert('Google sign-in failed. Please try again.');
+        return;
+      }
+      accessToken = tokenResponse.access_token;
+      await fetchUserInfo();
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('user-info').style.display = 'block';
+      document.getElementById('calendar-container').style.display = 'block';
+      updateBackupStatus('Connecting to your Google Drive...');
+      await initDriveFile();
+      loadZoomLevel();
+      showView('month');
+      requestPersistentStorage();
+      tryReconnectBackupFile();
+      scheduleTokenRefresh();
+    }
+
+    async function fetchUserInfo() {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const info = await res.json();
+      currentUser = info.email;
+      document.getElementById('user-email').textContent = currentUser;
+    }
+
+    function scheduleTokenRefresh() {
+      // Access tokens last ~1 hour; refresh silently before they expire.
+      setTimeout(() => {
+        if (accessToken) tokenClient.requestAccessToken({ prompt: '' });
+      }, 50 * 60 * 1000);
+    }
+
+    function signOutGoogle() {
+      if (accessToken) {
+        google.accounts.oauth2.revoke(accessToken, () => {});
+      }
+      accessToken = null;
+      driveFileId = null;
+      currentUser = null;
+      eventsData = {};
+      fileHandle = null;
+      document.getElementById('login-form').style.display = 'block';
+      document.getElementById('user-info').style.display = 'none';
+      document.getElementById('calendar-container').style.display = 'none';
+      updateBackupStatus('');
+      resetZoom();
+    }
+
+    // Wraps fetch with Bearer auth and one silent-refresh retry on expiry.
+    async function driveFetch(url, options = {}) {
+      options.headers = Object.assign({}, options.headers, { Authorization: `Bearer ${accessToken}` });
+      let res = await fetch(url, options);
+      if (res.status === 401) {
+        await new Promise((resolve) => {
+          tokenClient.callback = (resp) => {
+            if (resp && resp.access_token) accessToken = resp.access_token;
+            tokenClient.callback = handleTokenResponse;
+            resolve();
+          };
+          tokenClient.requestAccessToken({ prompt: '' });
+        });
+        options.headers.Authorization = `Bearer ${accessToken}`;
+        res = await fetch(url, options);
+      }
+      return res;
+    }
+
+    async function initDriveFile() {
+      try {
+        const listRes = await driveFetch(
+          `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&q=name%3D%27${DRIVE_FILE_NAME}%27`
+        );
+        const listData = await listRes.json();
+        if (listData.files && listData.files.length > 0) {
+          driveFileId = listData.files[0].id;
+          await loadEventsFromDrive();
+          updateBackupStatus('Synced with your Google Drive.');
+        } else {
+          await createDriveFile();
+          updateBackupStatus('Created your personal backup file in Google Drive.');
+        }
+      } catch (e) {
+        console.warn('Drive init failed, using local cache', e);
+        loadEventsFromLocalCache();
+        updateBackupStatus('Could not reach Google Drive — using locally cached data for now.', true);
+      }
+    }
+
+    async function createDriveFile() {
+      const metadata = { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', new Blob([JSON.stringify(eventsData)], { type: 'application/json' }));
+      const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json();
+      driveFileId = data.id;
+    }
+
+    async function loadEventsFromDrive() {
+      const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+      const text = await res.text();
+      try {
+        eventsData = text ? JSON.parse(text) : {};
+      } catch (e) {
+        eventsData = {};
+      }
+      cacheEventsLocally();
+    }
+
+    function loadEventsFromLocalCache() {
+      const cached = localStorage.getItem(`calendarEventsCache_${currentUser}`);
+      eventsData = cached ? JSON.parse(cached) : {};
+    }
+
+    function cacheEventsLocally() {
+      // Offline convenience cache only — Drive is the real source of truth.
+      if (currentUser) {
+        localStorage.setItem(`calendarEventsCache_${currentUser}`, JSON.stringify(eventsData));
+      }
+    }
+
+    async function saveEventsToDrive() {
+      if (!driveFileId) return;
+      try {
+        await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventsData)
+        });
+        updateBackupStatus('Saved to Google Drive.');
+      } catch (e) {
+        console.warn('Could not save to Drive', e);
+        updateBackupStatus('Could not reach Google Drive — will retry on next edit.', true);
+      }
+    }
+
+    function saveEventsData() {
+      cacheEventsLocally();
+      saveToFile(); // also mirror to a connected local backup file, if any
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = setTimeout(saveEventsToDrive, 1000); // debounce Drive writes
+    }
+
+    function showView(view) {
+      const weekView = document.getElementById('week-view');
+      const monthView = document.getElementById('month-view');
+
+      if (view === 'week') {
+        weekView.style.display = 'block';
+        monthView.style.display = 'none';
+        generateWeeklyView(currentDate);
+      } else if (view === 'month') {
+        weekView.style.display = 'none';
+        monthView.style.display = 'block';
+        generateMonthlyView(currentDate);
+      }
+    }
+
+    function generateWeeklyView(date) {
+      const startOfWeek = new Date(date);
+      startOfWeek.setDate(date.getDate() - date.getDay());
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      document.getElementById('week-title').innerText = `Weekly View - ${startOfWeek.toLocaleDateString()} to ${endOfWeek.toLocaleDateString()}`;
+
+      const weekContainer = document.getElementById('week-container');
+      weekContainer.innerHTML = '';
+
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      for (let i = 0; i < 7; i++) {
+        const day = new Date(startOfWeek);
+        day.setDate(startOfWeek.getDate() + i);
+        const formattedDate = formatDate(day);
+        const isToday = day.toDateString() === new Date().toDateString();
+
+        const dayBlock = document.createElement('div');
+        dayBlock.classList.add('day-block');
+        if (isToday) {
+          dayBlock.classList.add('today');
+        }
+        dayBlock.innerHTML = `
+          <div class="day-header">${dayNames[i]}, ${day.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</div>
+          <textarea placeholder="Task/Event for ${dayNames[i]}" data-date="${formattedDate}" oninput="updateEvent(this)">${eventsData[formattedDate] || ''}</textarea>
+        `;
+        weekContainer.appendChild(dayBlock);
+      }
+      
+      document.querySelectorAll('textarea').forEach(autoResize);
+    }
+
+    function generateMonthlyView(date) {
+      const currentYear = date.getFullYear();
+      const currentMonth = date.getMonth();
+      const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+      const startDate = new Date(firstDayOfMonth);
+      startDate.setHours(0, 0, 0, 0);
+      startDate.setDate(startDate.getDate() - startDate.getDay());
+
+      document.getElementById('month-title').innerText = `Monthly View - ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+
+      const monthDays = document.getElementById('month-days');
+      monthDays.innerHTML = '';
+
+      const monthColorClass = (currentMonth % 2 === 0) ? 'current-month' : 'other-month';
+
+      for (let i = 0; i < 6; i++) {
+        let rowHtml = '<tr>';
+        for (let j = 0; j < 7; j++) {
+          const day = new Date(startDate);
+          const formattedDate = formatDate(day);
+          const isCurrentMonth = day.getMonth() === currentMonth;
+          const isToday = day.toDateString() === new Date().toDateString();
+
+          let cellClass = isCurrentMonth ? monthColorClass : 'other-month';
+          if (isToday) {
+            cellClass += ' today';
+          }
+
+          rowHtml += `<td class="${cellClass}">
+                        <div>
+                          <span class="date-label">${day.getDate()}</span>
+                          <textarea placeholder="Event" data-date="${formattedDate}" oninput="updateEvent(this)">${eventsData[formattedDate] || ''}</textarea>
+                        </div>
+                      </td>`;
+          
+          startDate.setDate(startDate.getDate() + 1);
+        }
+        rowHtml += '</tr>';
+        monthDays.innerHTML += rowHtml;
+      }
+      
+      document.querySelectorAll('textarea').forEach(autoResize);
+    }
+
+    function formatDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function updateEvent(textarea) {
+      const date = textarea.getAttribute('data-date');
+      eventsData[date] = textarea.value;
+      saveEventsData();
+    }
+
+    function autoResize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+
+    function changePeriod(amount) {
+      const view = document.getElementById('week-view').style.display === 'block' ? 'week' : 'month';
+      if (view === 'week') {
+        currentDate.setDate(currentDate.getDate() + amount * 7);
+        generateWeeklyView(currentDate);
+      } else if (view === 'month') {
+        currentDate.setMonth(currentDate.getMonth() + amount);
+        generateMonthlyView(currentDate);
+      }
+    }
+
+    function zoom(factor) {
+      currentZoom *= factor;
+      applyZoom();
+      saveZoomLevel();
+    }
+
+    function applyZoom() {
+      document.getElementById('zoom-container').style.transform = `scale(${currentZoom})`;
+      document.body.style.width = `${100 / currentZoom}%`;
+      document.body.style.height = `${100 / currentZoom}%`;
+    }
+
+    function saveZoomLevel() {
+      localStorage.setItem('currentZoom', currentZoom);
+    }
+
+    function loadZoomLevel() {
+      const savedZoom = localStorage.getItem('currentZoom');
+      if (savedZoom) {
+        currentZoom = parseFloat(savedZoom);
+        applyZoom();
+      }
+    }
+
+    function resetZoom() {
+      currentZoom = 1;
+      applyZoom();
+    }
+
+    /* =========================================================
+       ADDED: Local file backup (persists even if browsing data
+       / cache / localStorage is cleared, since data lives in an
+       actual file on disk, not in the browser's storage).
+       Uses the File System Access API (Chrome/Edge). Falls back
+       to manual Export/Import (download/upload) everywhere else.
+       Data is only removed if you edit/backspace it yourself.
+       ========================================================= */
+
+    let fileHandle = null;
+    const FS_SUPPORTED = 'showSaveFilePicker' in window;
+
+    // Ask the browser not to auto-evict this site's storage under pressure.
+    // (Does not protect against the user manually clearing browsing data —
+    // only a real on-disk file, handled below, can survive that.)
+    function requestPersistentStorage() {
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+      }
+    }
+
+    function openHandleDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('calendarBackupDB', 1);
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore('handles');
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function storeFileHandle(handle) {
+      try {
+        const db = await openHandleDB();
+        const tx = db.transaction('handles', 'readwrite');
+        tx.objectStore('handles').put(handle, currentUser);
+        await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+      } catch (e) { console.warn('Could not store file handle reference', e); }
+    }
+
+    async function getStoredFileHandle() {
+      try {
+        const db = await openHandleDB();
+        const tx = db.transaction('handles', 'readonly');
+        const req = tx.objectStore('handles').get(currentUser);
+        return await new Promise((res, rej) => {
+          req.onsuccess = () => res(req.result || null);
+          req.onerror = () => rej(req.error);
+        });
+      } catch (e) { return null; }
+    }
+
+    // Let the user pick/create the real file on their device that
+    // will hold the calendar data going forward.
+    async function chooseBackupFile() {
+      if (!FS_SUPPORTED) {
+        alert('Your browser doesn\'t support saving directly to a local file. Please use "Export Backup" and "Import Backup" instead — those work everywhere and save/load a real file on your device too.');
+        return;
+      }
+      try {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: `calendar_backup_${currentUser}.json`,
+          types: [{ description: 'JSON Backup', accept: { 'application/json': ['.json'] } }]
+        });
+        await storeFileHandle(fileHandle);
+        await saveToFile();
+        updateBackupStatus('Backup file connected — your events now auto-save to this file on your device.');
+      } catch (e) {
+        if (e.name !== 'AbortError') console.warn(e);
+      }
+    }
+
+    // On login, silently try to resume writing to a previously chosen file.
+    async function tryReconnectBackupFile() {
+      if (!FS_SUPPORTED) return;
+      const handle = await getStoredFileHandle();
+      if (!handle) {
+        updateBackupStatus('No local backup file connected yet. Click "Set Up Local Backup File" to protect your data permanently.');
+        return;
+      }
+      try {
+        const perm = await handle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          fileHandle = handle;
+          updateBackupStatus('Local backup file connected.');
+        } else {
+          fileHandle = handle;
+          updateBackupStatus('Backup file found — click "Reconnect Backup File" to resume auto-saving (browsers require this confirmation each session).', true);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    async function reconnectBackupFile() {
+      if (!fileHandle) {
+        fileHandle = await getStoredFileHandle();
+      }
+      if (!fileHandle) {
+        alert('No backup file has been set up yet. Click "Set Up Local Backup File" first.');
+        return;
+      }
+      try {
+        const perm = await fileHandle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          updateBackupStatus('Backup file reconnected — auto-saving resumed.');
+          await saveToFile();
+        } else {
+          updateBackupStatus('Permission was not granted, so auto-saving is paused.', true);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    async function saveToFile() {
+      if (!fileHandle) return;
+      try {
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(eventsData, null, 2));
+        await writable.close();
+      } catch (e) {
+        console.warn('Could not write to backup file', e);
+      }
+    }
+
+    async function loadBackupFile() {
+      if (!FS_SUPPORTED) {
+        alert('Your browser doesn\'t support this. Please use "Import Backup" instead.');
+        return;
+      }
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'JSON Backup', accept: { 'application/json': ['.json'] } }]
+        });
+        const file = await handle.getFile();
+        const text = await file.text();
+        const imported = JSON.parse(text);
+        eventsData = { ...eventsData, ...imported };
+        localStorage.setItem(`calendarEvents_${currentUser}`, JSON.stringify(eventsData));
+        fileHandle = handle;
+        await storeFileHandle(fileHandle);
+        const currentView = document.getElementById('week-view').style.display === 'block' ? 'week' : 'month';
+        showView(currentView);
+        updateBackupStatus('Backup loaded and connected for future auto-saving.');
+      } catch (e) {
+        if (e.name !== 'AbortError') console.warn(e);
+      }
+    }
+
+    // Works in every browser: downloads a real JSON file to the device.
+    function exportBackup() {
+      const blob = new Blob([JSON.stringify(eventsData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `calendar_backup_${currentUser || 'guest'}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      updateBackupStatus('Backup downloaded to your device.');
+    }
+
+    // Works in every browser: restores from a previously downloaded file.
+    function importBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const imported = JSON.parse(reader.result);
+          eventsData = { ...eventsData, ...imported };
+          localStorage.setItem(`calendarEvents_${currentUser}`, JSON.stringify(eventsData));
+          const currentView = document.getElementById('week-view').style.display === 'block' ? 'week' : 'month';
+          showView(currentView);
+          updateBackupStatus('Backup imported successfully.');
+        } catch (e) {
+          alert('That file could not be read as a valid backup.');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function updateBackupStatus(msg, warn) {
+      const el = document.getElementById('backup-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = warn ? '#ffcc00' : '#8f8';
+      }
+    }
+  </script>
+
+</body>
+</html>
